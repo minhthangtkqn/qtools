@@ -12,7 +12,6 @@ struct BannerSettingsView: View {
     @State private var content: String = "Banner"
     @State private var selectedColor: Color = .white
     @State private var selectedFontSize: Double = 120
-    @State private var shouldNavigateToDisplay = false
 
     @Environment(\.dismiss) private var dismiss
 
@@ -22,6 +21,24 @@ struct BannerSettingsView: View {
         content = "Banner"
         selectedColor = .white
         selectedFontSize = 120
+    }
+
+    private func runBanner() {
+        let displayView = BannerDisplayView(
+            content: content.isEmpty ? "Banner" : content,
+            color: selectedColor,
+            fontSize: selectedFontSize
+        )
+        let vc = LandscapeHostingController(rootView: displayView)
+        vc.modalPresentationStyle = .fullScreen
+
+        AppDelegate.orientationLock = .landscapeRight
+
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.keyWindow?
+            .rootViewController?
+            .present(vc, animated: true)
     }
 
     var body: some View {
@@ -117,7 +134,7 @@ struct BannerSettingsView: View {
                         }
 
                         Button(action: {
-                            shouldNavigateToDisplay = true
+                            runBanner()
                         }) {
                             Text("Run")
                                 .font(.headline)
@@ -138,9 +155,6 @@ struct BannerSettingsView: View {
         .background(Color(.systemBackground))
         .navigationTitle("Banner")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(isPresented: $shouldNavigateToDisplay) {
-            BannerDisplayView(content: content.isEmpty ? "Banner" : content, color: selectedColor, fontSize: selectedFontSize)
-        }
     }
 }
 
@@ -152,7 +166,7 @@ struct BannerDisplayView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             Color.black
                 .ignoresSafeArea()
 
@@ -171,28 +185,55 @@ struct BannerDisplayView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Button(action: {
+                UIApplication.shared.connectedScenes
+                    .compactMap { $0 as? UIWindowScene }
+                    .first?.keyWindow?
+                    .rootViewController?
+                    .dismiss(animated: false)
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.title2)
+                    .foregroundStyle(.white)
+                    .padding(16)
+            }
         }
-        .rotationEffect(.degrees(90))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black)
-        .navigationBarBackButtonHidden(true)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .onAppear {
-            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+        .ignoresSafeArea()
+    }
+}
+
+private class LandscapeHostingController: UIHostingController<BannerDisplayView> {
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscapeRight }
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
+    override var shouldAutorotate: Bool { true }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+
+        guard let window = view.window else { return }
+
+        // Cover the window so the portrait rotation happens invisibly behind this overlay
+        let overlay = UIView(frame: window.bounds)
+        overlay.backgroundColor = .black
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        window.addSubview(overlay)
+
+        AppDelegate.orientationLock = .portrait
+        if let scene = window.windowScene {
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
         }
-        .onDisappear {
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button(action: {
-                    dismiss()
-                }) {
-                    Image(systemName: "chevron.left")
-                        .font(.title2)
-                        .foregroundStyle(.white)
-                }
-            }
+        presentingViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+
+        // Fade out the overlay once the rotation has settled
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            UIView.animate(withDuration: 0.2, animations: {
+                overlay.alpha = 0
+            }, completion: { _ in
+                overlay.removeFromSuperview()
+            })
         }
     }
 }
