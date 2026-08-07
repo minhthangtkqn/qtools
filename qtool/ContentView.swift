@@ -8,6 +8,11 @@
 import SwiftUI
 import UIKit
 
+enum Feature: String, Hashable {
+    case banner
+    case weekGrowth
+}
+
 struct ContentView: View {
     var body: some View {
         NavigationStack {
