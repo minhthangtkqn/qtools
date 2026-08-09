@@ -36,7 +36,7 @@ struct ChatMessage: Identifiable {
 private class GeminiService {
     // Get a free key at https://aistudio.google.com/app/apikey
     // Set your key here — never commit this value
-    private let apiKey = ""
+    private let apiKey = Secrets.geminiAPIKey
     private let model = "gemini-3.6-flash"
 
     func send(prompt: String, history: [ChatMessage]) async throws -> String {
