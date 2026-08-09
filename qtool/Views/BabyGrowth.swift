@@ -239,8 +239,6 @@ struct BabyGrowthView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Baby Growth").font(.title).fontWeight(.bold)
-
             Picker("Mode", selection: $timeMode) {
                 ForEach(TimeMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -286,5 +284,6 @@ struct BabyGrowthView: View {
         .padding(.top, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.systemBackground))
+        .navigationTitle("Baby Growth")
     }
 }

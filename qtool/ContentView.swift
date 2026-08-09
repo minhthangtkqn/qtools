@@ -11,6 +11,7 @@ import UIKit
 enum Feature: String, Hashable {
     case banner
     case weekGrowth
+    case qaChat
 }
 
 struct ContentView: View {
@@ -31,13 +32,17 @@ private struct MainScreenView: View {
                 .fontWeight(.bold)
                 .padding(.top, 20)
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 22) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 24), GridItem(.flexible())], spacing: 24) {
                 NavigationLink(value: Feature.banner) {
                     FeatureCard(title: "Banner")
                 }
 
                 NavigationLink(value: Feature.weekGrowth) {
                     FeatureCard(title: "Baby Growth")
+                }
+
+                NavigationLink(value: Feature.qaChat) {
+                    FeatureCard(title: "AI Chat")
                 }
             }
             .padding(.horizontal, 24)
@@ -50,6 +55,8 @@ private struct MainScreenView: View {
                 BannerSettingsView()
             case .weekGrowth:
                 BabyGrowthView()
+            case .qaChat:
+                QAChatView()
             }
         }
         .padding(.top, 10)
