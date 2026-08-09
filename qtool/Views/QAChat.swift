@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import PhotosUI
 
 // MARK: - Response model
 
@@ -23,23 +24,36 @@ private struct GeminiResponse: Decodable {
     }
 }
 
+// MARK: - Chat session (survives navigation, cleared on "Clear" or app close)
+
+class ChatSession: ObservableObject {
+    @Published var messages: [ChatMessage] = []
+}
+
 // MARK: - Message model
 
 struct ChatMessage: Identifiable {
     let id = UUID()
     let isUser: Bool
     let text: String
+    let imageData: Data?
+
+    init(isUser: Bool, text: String, imageData: Data? = nil) {
+        self.isUser = isUser
+        self.text = text
+        self.imageData = imageData
+    }
 }
 
 // MARK: - Network service
 
 private class GeminiService {
     // Get a free key at https://aistudio.google.com/app/apikey
-    // Set your key here — never commit this value
+    // Set your key in Secrets.swift — never commit that file
     private let apiKey = Secrets.geminiAPIKey
     private let model = "gemini-3.6-flash"
 
-    func send(prompt: String, history: [ChatMessage]) async throws -> String {
+    func send(prompt: String, imageData: Data?, history: [ChatMessage]) async throws -> String {
         let urlString = "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
         guard let url = URL(string: urlString) else { throw URLError(.badURL) }
 
@@ -49,10 +63,21 @@ private class GeminiService {
 
         // Build multi-turn conversation history
         var contents: [[String: Any]] = history.map { msg in
-            ["role": msg.isUser ? "user" : "model",
-             "parts": [["text": msg.text]]]
+            var parts: [[String: Any]] = []
+            if !msg.text.isEmpty { parts.append(["text": msg.text]) }
+            if let data = msg.imageData {
+                parts.append(["inlineData": ["mimeType": "image/jpeg", "data": data.base64EncodedString()]])
+            }
+            return ["role": msg.isUser ? "user" : "model", "parts": parts]
         }
-        contents.append(["role": "user", "parts": [["text": prompt]]])
+
+        // Current user message
+        var currentParts: [[String: Any]] = []
+        if !prompt.isEmpty { currentParts.append(["text": prompt]) }
+        if let data = imageData {
+            currentParts.append(["inlineData": ["mimeType": "image/jpeg", "data": data.base64EncodedString()]])
+        }
+        contents.append(["role": "user", "parts": currentParts])
 
         request.httpBody = try JSONSerialization.data(withJSONObject: ["contents": contents])
 
@@ -72,9 +97,12 @@ private class GeminiService {
 // MARK: - Main view
 
 struct QAChatView: View {
-    @State private var messages: [ChatMessage] = []
+    @EnvironmentObject private var chatSession: ChatSession
     @State private var inputText: String = ""
     @State private var isLoading: Bool = false
+    @State private var selectedImage: UIImage? = nil
+    @State private var photoPickerItem: PhotosPickerItem? = nil
+    @State private var showCamera: Bool = false
 
     private let service = GeminiService()
 
@@ -83,14 +111,14 @@ struct QAChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        if messages.isEmpty && !isLoading {
+                        if chatSession.messages.isEmpty && !isLoading {
                             Text("Ask me anything…")
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.top, 40)
                         }
 
-                        ForEach(messages) { msg in
+                        ForEach(chatSession.messages) { msg in
                             MessageBubble(message: msg)
                         }
 
@@ -102,7 +130,9 @@ struct QAChatView: View {
                     }
                     .padding(16)
                 }
-                .onChange(of: messages.count) { _ in
+                .scrollDismissesKeyboard(.interactively)
+                .onTapGesture { hideKeyboard() }
+                .onChange(of: chatSession.messages.count) { _ in
                     withAnimation { proxy.scrollTo("bottom") }
                 }
                 .onChange(of: isLoading) { _ in
@@ -112,58 +142,118 @@ struct QAChatView: View {
 
             Divider()
 
-            HStack(alignment: .bottom, spacing: 12) {
-                TextField("Ask something…", text: $inputText, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...4)
-                    .disabled(isLoading)
+            VStack(spacing: 8) {
+                // Image thumbnail — shown when an image is staged
+                if let selectedImage {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(uiImage: selectedImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 64, height: 64)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                Button(action: sendMessage) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
-                        .foregroundStyle(canSend ? .blue : .gray)
+                        Button {
+                            self.selectedImage = nil
+                            self.photoPickerItem = nil
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.gray)
+                                .font(.system(size: 18))
+                        }
+
+                        Spacer()
+                    }
                 }
-                .disabled(!canSend)
+
+                HStack(alignment: .bottom, spacing: 12) {
+                    // Camera button
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Image(systemName: "camera")
+                            .font(.system(size: 24))
+                            .foregroundStyle(.blue)
+                    }
+
+                    // Photo library picker
+                    PhotosPicker(selection: $photoPickerItem, matching: .images) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 24))
+                            .foregroundStyle(.blue)
+                    }
+                    .onChange(of: photoPickerItem) { item in
+                        Task {
+                            if let data = try? await item?.loadTransferable(type: Data.self) {
+                                selectedImage = UIImage(data: data)
+                            }
+                        }
+                    }
+
+                    TextField("Ask something…", text: $inputText, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1...4)
+                        .disabled(isLoading)
+
+                    Button(action: sendMessage) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(canSend ? .blue : .gray)
+                    }
+                    .disabled(!canSend)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            CameraView(image: $selectedImage)
+                .ignoresSafeArea()
         }
         .navigationTitle("AI Chat")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if !messages.isEmpty {
+                if !chatSession.messages.isEmpty {
                     Button("Clear") {
-                        messages = []
+                        chatSession.messages = []
                     }
                 }
             }
         }
     }
 
+    private func hideKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    // Send is allowed if there's text OR an image (or both)
     private var canSend: Bool {
-        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isLoading
+        (!inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedImage != nil) && !isLoading
     }
 
     private func sendMessage() {
         let prompt = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
+        guard !prompt.isEmpty || selectedImage != nil else { return }
 
-        let historyBeforeThisMessage = messages
+        let imageData = selectedImage.flatMap { $0.jpegData(compressionQuality: 0.8) }
+        let historyBeforeThisMessage = chatSession.messages
+
         inputText = ""
-        messages.append(ChatMessage(isUser: true, text: prompt))
+        selectedImage = nil
+        photoPickerItem = nil
+        chatSession.messages.append(ChatMessage(isUser: true, text: prompt, imageData: imageData))
         isLoading = true
 
         Task {
             do {
-                let reply = try await service.send(prompt: prompt, history: historyBeforeThisMessage)
+                let reply = try await service.send(prompt: prompt, imageData: imageData, history: historyBeforeThisMessage)
                 await MainActor.run {
-                    messages.append(ChatMessage(isUser: false, text: reply))
+                    chatSession.messages.append(ChatMessage(isUser: false, text: reply))
                     isLoading = false
                 }
             } catch {
                 await MainActor.run {
-                    messages.append(ChatMessage(isUser: false, text: "Error: \(error.localizedDescription)"))
+                    chatSession.messages.append(ChatMessage(isUser: false, text: "Error: \(error.localizedDescription)"))
                     isLoading = false
                 }
             }
@@ -180,12 +270,24 @@ private struct MessageBubble: View {
         HStack {
             if message.isUser { Spacer(minLength: 60) }
 
-            Text(message.text)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(message.isUser ? Color.blue : Color(.systemGray5))
-                .foregroundStyle(message.isUser ? .white : .primary)
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+            VStack(alignment: message.isUser ? .trailing : .leading, spacing: 6) {
+                if let data = message.imageData, let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+
+                if !message.text.isEmpty {
+                    Text(message.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(message.isUser ? Color.blue : Color(.systemGray5))
+                        .foregroundStyle(message.isUser ? .white : .primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+            }
 
             if !message.isUser { Spacer(minLength: 60) }
         }
@@ -216,8 +318,40 @@ private struct TypingIndicator: View {
     }
 }
 
+private struct CameraView: UIViewControllerRepresentable {
+    @Binding var image: UIImage?
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraView
+
+        init(_ parent: CameraView) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            parent.image = info[.originalImage] as? UIImage
+            picker.dismiss(animated: true)
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
+    }
+}
+
 #Preview {
     NavigationStack {
         QAChatView()
     }
+    .environmentObject(ChatSession())
 }

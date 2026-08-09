@@ -15,10 +15,13 @@ enum Feature: String, Hashable {
 }
 
 struct ContentView: View {
+    @StateObject private var chatSession = ChatSession()
+
     var body: some View {
         NavigationStack {
             MainScreenView()
         }
+        .environmentObject(chatSession)
     }
 }
 
