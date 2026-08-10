@@ -68,6 +68,7 @@ private struct MainScreenView: View {
             }
         }
         .padding(.top, 10)
+        .background(OrangeSliceTileBackground().ignoresSafeArea())
     }
 }
 
@@ -90,6 +91,65 @@ private struct FeatureCard: View {
                 .fontWeight(.bold)
                 .foregroundStyle(.black)
         }
+    }
+}
+
+// MARK: - Tiled whole-orange background (no asset required)
+
+private struct OrangeSliceTileBackground: View {
+    private let tileSize: CGFloat = 120
+
+    var body: some View {
+        Canvas { ctx, size in
+            let cols = Int(ceil(size.width  / tileSize)) + 2
+            let rows = Int(ceil(size.height / tileSize)) + 1
+            for row in 0..<rows {
+                // Alternate rows are offset by half a tile (brick pattern)
+                let xShift = (row % 2 == 1) ? tileSize / 2 : 0
+                for col in 0..<cols {
+                    var copy = ctx
+                    drawOrange(
+                        into: &copy,
+                        cx: CGFloat(col) * tileSize + tileSize / 2 - xShift,
+                        cy: CGFloat(row) * tileSize + tileSize / 2,
+                        r: tileSize / 2 * 0.42
+                    )
+                }
+            }
+        }
+        .opacity(0.1)
+    }
+
+    private func drawOrange(into ctx: inout GraphicsContext, cx: CGFloat, cy: CGFloat, r: CGFloat) {
+        // Main orange body
+        ctx.fill(
+            Path(ellipseIn: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)),
+            with: .color(red: 0.95, green: 0.58, blue: 0.07)
+        )
+
+        // Stippled peel texture — concentric rings of darker dots
+        let dotR = max(0.8, r * 0.055)
+        for ring in 1...4 {
+            let rr = r * 0.22 * CGFloat(ring)
+            let count = max(6, Int(2 * CGFloat.pi * rr / (dotR * 3.2)))
+            let step = CGFloat.pi * 2 / CGFloat(count)
+            for i in 0..<count {
+                let a = CGFloat(i) * step
+                let dx = cx + rr * cos(a)
+                let dy = cy + rr * sin(a)
+                ctx.fill(
+                    Path(ellipseIn: CGRect(x: dx - dotR, y: dy - dotR, width: dotR * 2, height: dotR * 2)),
+                    with: .color(red: 0.75, green: 0.35, blue: 0.02, opacity: 0.45)
+                )
+            }
+        }
+
+        // Stem nub at top
+        let sR = r * 0.09
+        ctx.fill(
+            Path(ellipseIn: CGRect(x: cx - sR, y: cy - r - sR * 0.3, width: sR * 2, height: sR * 1.6)),
+            with: .color(red: 0.18, green: 0.48, blue: 0.12)
+        )
     }
 }
 
