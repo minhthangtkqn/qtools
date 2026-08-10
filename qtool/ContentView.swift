@@ -47,6 +47,11 @@ private struct MainScreenView: View {
                 NavigationLink(value: Feature.qaChat) {
                     FeatureCard(title: "AI Chat")
                 }
+
+                Button(action: launchTimeFly) {
+                    FeatureCard(title: "Time Flies")
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 24)
 
