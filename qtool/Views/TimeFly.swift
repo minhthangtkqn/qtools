@@ -14,9 +14,10 @@ func launchTimeFly() {
 
     AppDelegate.orientationLock = .landscapeRight
 
-    UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .first?.keyWindow?
+    guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+    scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+
+    scene.keyWindow?
         .rootViewController?
         .present(vc, animated: true)
 }
@@ -75,6 +76,18 @@ private class TimeFlyLandscapeHostingController: UIHostingController<TimeFlyDisp
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscapeRight }
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
     override var shouldAutorotate: Bool { true }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        setNeedsUpdateOfSupportedInterfaceOrientations()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if let scene = view.window?.windowScene {
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+        }
+    }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
