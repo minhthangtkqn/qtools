@@ -126,7 +126,6 @@ struct QAChatView: View {
     @EnvironmentObject private var chatSession: ChatSession
     @StateObject private var mic = AudioRecorderHelper()
     @State private var inputText: String = ""
-    @State private var isLoading: Bool = false
     @State private var selectedImage: UIImage? = nil
     @State private var stagedAudioData: Data? = nil
     @State private var showCamera: Bool = false
@@ -139,7 +138,7 @@ struct QAChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        if chatSession.messages.isEmpty && !isLoading {
+                        if chatSession.messages.isEmpty && !chatSession.isLoading {
                             Text("Ask me anything…")
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .center)
@@ -150,7 +149,7 @@ struct QAChatView: View {
                             MessageBubble(message: msg)
                         }
 
-                        if isLoading {
+                        if chatSession.isLoading {
                             TypingIndicator()
                         }
 
@@ -163,7 +162,7 @@ struct QAChatView: View {
                 .onChange(of: chatSession.messages.count) {
                     withAnimation { proxy.scrollTo("bottom") }
                 }
-                .onChange(of: isLoading) {
+                .onChange(of: chatSession.isLoading) {
                     withAnimation { proxy.scrollTo("bottom") }
                 }
             }
@@ -238,7 +237,7 @@ struct QAChatView: View {
                     TextField("Ask something…", text: $inputText, axis: .vertical)
                         .font(.body)
                         .lineLimit(1...6)
-                        .disabled(isLoading)
+                        .disabled(chatSession.isLoading)
 
                     Button(action: sendMessage) {
                         Image(systemName: "arrow.up")
@@ -288,7 +287,7 @@ struct QAChatView: View {
         (!inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || selectedImage != nil
             || stagedAudioData != nil)
-            && !isLoading && !mic.isRecording
+            && !chatSession.isLoading && !mic.isRecording
     }
 
     private func startRecording() {
@@ -311,19 +310,19 @@ struct QAChatView: View {
         selectedImage = nil
         stagedAudioData = nil
         chatSession.messages.append(ChatMessage(isUser: true, text: prompt, imageData: imageData, audioData: audioData))
-        isLoading = true
+        chatSession.isLoading = true
 
         Task {
             do {
                 let reply = try await service.send(prompt: prompt, imageData: imageData, audioData: audioData, history: historyBeforeThisMessage)
                 await MainActor.run {
                     chatSession.messages.append(ChatMessage(isUser: false, text: reply))
-                    isLoading = false
+                    chatSession.isLoading = false
                 }
             } catch {
                 await MainActor.run {
                     chatSession.messages.append(ChatMessage(isUser: false, text: "Error: \(error.localizedDescription)"))
-                    isLoading = false
+                    chatSession.isLoading = false
                 }
             }
         }
@@ -364,6 +363,21 @@ private struct MessageBubble: View {
                         .background(message.isUser ? Color.blue : Color(.systemGray5))
                         .foregroundStyle(message.isUser ? .white : .primary)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .contentShape(RoundedRectangle(cornerRadius: 16))
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = message.text
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                        } preview: {
+                            Text(message.text)
+                                .lineLimit(nil)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .foregroundStyle(message.isUser ? Color.white : Color.primary)
+                                .background(message.isUser ? Color.blue : Color(.systemGray5))
+                        }
                 }
             }
 

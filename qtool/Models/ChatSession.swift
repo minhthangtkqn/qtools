@@ -28,4 +28,5 @@ struct ChatMessage: Identifiable {
 
 class ChatSession: ObservableObject {
     @Published var messages: [ChatMessage] = []
+    @Published var isLoading: Bool = false
 }
