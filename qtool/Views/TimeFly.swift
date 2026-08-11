@@ -58,7 +58,13 @@ struct TimeFlyDisplayView: View {
             }
         }
         .ignoresSafeArea()
-        .onAppear { minutes = Self.remainingMinutes() }
+        .onAppear {
+            minutes = Self.remainingMinutes()
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { _ in
             minutes = Self.remainingMinutes()
         }

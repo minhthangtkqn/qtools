@@ -94,7 +94,7 @@ private struct FeatureCard: View {
     }
 }
 
-// MARK: - Tiled whole-orange background (no asset required)
+// MARK: - Tiled orange-slice background (no asset required)
 
 private struct OrangeSliceTileBackground: View {
     private let tileSize: CGFloat = 120
@@ -108,7 +108,7 @@ private struct OrangeSliceTileBackground: View {
                 let xShift = (row % 2 == 1) ? tileSize / 2 : 0
                 for col in 0..<cols {
                     var copy = ctx
-                    drawOrange(
+                    drawSlice(
                         into: &copy,
                         cx: CGFloat(col) * tileSize + tileSize / 2 - xShift,
                         cy: CGFloat(row) * tileSize + tileSize / 2,
@@ -120,35 +120,77 @@ private struct OrangeSliceTileBackground: View {
         .opacity(0.1)
     }
 
-    private func drawOrange(into ctx: inout GraphicsContext, cx: CGFloat, cy: CGFloat, r: CGFloat) {
-        // Main orange body
+    private func drawSlice(into ctx: inout GraphicsContext, cx: CGFloat, cy: CGFloat, r: CGFloat) {
+        // Outer peel ring (dark amber)
         ctx.fill(
             Path(ellipseIn: CGRect(x: cx - r, y: cy - r, width: r * 2, height: r * 2)),
-            with: .color(red: 0.95, green: 0.58, blue: 0.07)
+            with: .color(red: 0.80, green: 0.40, blue: 0.03)
         )
 
-        // Stippled peel texture — concentric rings of darker dots
-        let dotR = max(0.8, r * 0.055)
-        for ring in 1...4 {
-            let rr = r * 0.22 * CGFloat(ring)
-            let count = max(6, Int(2 * CGFloat.pi * rr / (dotR * 3.2)))
-            let step = CGFloat.pi * 2 / CGFloat(count)
-            for i in 0..<count {
-                let a = CGFloat(i) * step
-                let dx = cx + rr * cos(a)
-                let dy = cy + rr * sin(a)
-                ctx.fill(
-                    Path(ellipseIn: CGRect(x: dx - dotR, y: dy - dotR, width: dotR * 2, height: dotR * 2)),
-                    with: .color(red: 0.75, green: 0.35, blue: 0.02, opacity: 0.45)
-                )
+        // Inner peel (brighter orange)
+        let pr = r * 0.88
+        ctx.fill(
+            Path(ellipseIn: CGRect(x: cx - pr, y: cy - pr, width: pr * 2, height: pr * 2)),
+            with: .color(red: 0.94, green: 0.57, blue: 0.06)
+        )
+
+        // Pith (cream)
+        let pithR = r * 0.78
+        ctx.fill(
+            Path(ellipseIn: CGRect(x: cx - pithR, y: cy - pithR, width: pithR * 2, height: pithR * 2)),
+            with: .color(red: 0.97, green: 0.93, blue: 0.82)
+        )
+
+        // Segments
+        let segCount = 9
+        let step     = CGFloat.pi * 2 / CGFloat(segCount)
+        let gap: CGFloat = 0.06
+        let innerR = r * 0.11
+        let segFill = GraphicsContext.Shading.color(red: 0.96, green: 0.64, blue: 0.08)
+
+        for i in 0..<segCount {
+            let a0 = CGFloat(i)      * step + gap - .pi / 2
+            let a1 = CGFloat(i + 1) * step - gap - .pi / 2
+
+            var seg = Path()
+            seg.addArc(center: CGPoint(x: cx, y: cy), radius: innerR,
+                       startAngle: .radians(a0), endAngle: .radians(a1), clockwise: false)
+            seg.addLine(to: CGPoint(x: cx + pithR * cos(a1), y: cy + pithR * sin(a1)))
+            seg.addArc(center: CGPoint(x: cx, y: cy), radius: pithR,
+                       startAngle: .radians(a1), endAngle: .radians(a0), clockwise: true)
+            seg.closeSubpath()
+            ctx.fill(seg, with: segFill)
+        }
+
+        // Membrane separator lines
+        let memW = max(0.8, r * 0.026)
+        for i in 0..<segCount {
+            let angle = CGFloat(i) * step - .pi / 2
+            var line = Path()
+            line.move(to:    CGPoint(x: cx + innerR * cos(angle), y: cy + innerR * sin(angle)))
+            line.addLine(to: CGPoint(x: cx + pithR  * cos(angle), y: cy + pithR  * sin(angle)))
+            ctx.stroke(line, with: .color(.white), lineWidth: memW)
+        }
+
+        // Juice veins (two short streaks per segment)
+        let veinW = max(0.4, r * 0.012)
+        for i in 0..<segCount {
+            let mid = (CGFloat(i) + 0.5) * step - .pi / 2
+            for offset: CGFloat in [-0.14, 0.14] {
+                let va   = mid + offset
+                let vIn  = innerR + r * 0.14
+                let vOut = pithR  - r * 0.14
+                var vein = Path()
+                vein.move(to:    CGPoint(x: cx + vIn  * cos(va), y: cy + vIn  * sin(va)))
+                vein.addLine(to: CGPoint(x: cx + vOut * cos(va), y: cy + vOut * sin(va)))
+                ctx.stroke(vein, with: .color(Color.white.opacity(0.75)), lineWidth: veinW)
             }
         }
 
-        // Stem nub at top
-        let sR = r * 0.09
+        // Centre nub (cream)
         ctx.fill(
-            Path(ellipseIn: CGRect(x: cx - sR, y: cy - r - sR * 0.3, width: sR * 2, height: sR * 1.6)),
-            with: .color(red: 0.18, green: 0.48, blue: 0.12)
+            Path(ellipseIn: CGRect(x: cx - innerR, y: cy - innerR, width: innerR * 2, height: innerR * 2)),
+            with: .color(red: 0.97, green: 0.93, blue: 0.82)
         )
     }
 }
