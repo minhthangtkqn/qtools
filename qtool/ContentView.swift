@@ -68,6 +68,13 @@ private struct MainScreenView: View {
             }
         }
         .padding(.top, 10)
+        .overlay(alignment: .bottomLeading) {
+            Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—")")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 16)
+                .padding(.bottom, 12)
+        }
         .background(OrangeSliceTileBackground().ignoresSafeArea())
     }
 }
